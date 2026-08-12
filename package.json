@@ -9,7 +9,7 @@
   "keywords": ["claude-code", "codex", "cli", "profiles", "accounts", "seats", "overton", "desk"],
   "repository": { "type": "git", "url": "git+https://github.com/hookdump/roster.git" },
   "dependencies": { "yaml": "^2.8.0" },
-  "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.6.0" },
+  "devDependencies": { "@types/bun": "^1.3.14", "@types/node": "^22.0.0", "typescript": "^5.6.0" },
   "scripts": {
     "roster": "bun run src/index.ts",
     "typecheck": "tsc --noEmit",

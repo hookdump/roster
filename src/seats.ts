@@ -6,7 +6,7 @@
  * agents can hold two seats at once — which is the whole point, and the thing
  * a switcher cannot do.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
@@ -141,4 +141,31 @@ export function seatEnv(seat: Seat): Record<string, string> {
 /** Where this seat's credentials live, for detection and for error messages. */
 export function seatDir(seat: Seat): string | undefined {
   return seat.provider === "anthropic" ? seat.configDir : seat.provider === "codex" ? seat.codexHome : undefined;
+}
+
+/**
+ * Make a seat's directory, if it has one and it is not there yet.
+ *
+ * Both engines refuse to start when their home points somewhere that does not
+ * exist — codex fails outright with "CODEX_HOME points to …, but that path
+ * does not exist". So `roster login` was the only command that could not run
+ * against a seat that had never been used, while `roster run` told you to fix
+ * exactly that by running `roster login`. Creating a seat IS what login means
+ * here, so this belongs on that path and nowhere else.
+ *
+ * 0700 because what lands in here is an auth token.
+ *
+ * Separated from `cmdLogin` so it can be tested without spawning a real engine
+ * and starting somebody's browser-based sign-in.
+ */
+export function ensureSeatDir(seat: Seat): { dir?: string; created: boolean; error?: string } {
+  const dir = seatDir(seat);
+  if (!dir) return { created: false };
+  if (existsSync(dir)) return { dir, created: false };
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    return { dir, created: true };
+  } catch (e) {
+    return { dir, created: false, error: (e as Error).message };
+  }
 }

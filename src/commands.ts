@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { loadSeats, findSeat, seatEnv, seatDir, rosterHome, overtonConfigPath, type Seat } from "./seats.ts";
+import { loadSeats, findSeat, seatEnv, seatDir, ensureSeatDir, rosterHome, overtonConfigPath, type Seat } from "./seats.ts";
 import { seatStatus, lastUsed } from "./detect.ts";
 import { loadHosts, queryHosts, LOCAL, type RemoteSeat } from "./hosts.ts";
 
@@ -167,6 +167,16 @@ export function cmdLogin(name: string): number {
   }
   const engine = ENGINE[seat.provider];
   console.log(`signing in ${c(BOLD, seat.name)} — ${Object.entries(seatEnv(seat)).map(([k, v]) => `${k}=${v}`).join(" ")}`);
+
+  // The engines refuse to start when their home does not exist, so creating it
+  // is part of signing in. See `ensureSeatDir`.
+  const made = ensureSeatDir(seat);
+  if (made.error) {
+    console.error(`could not create ${made.dir}: ${made.error}`);
+    return 73; // EX_CANTCREAT
+  }
+  if (made.created) console.log(c(DIM, `  created ${made.dir}`));
+
   console.log(c(DIM, `  running: ${engine.bin} ${engine.loginArgs.join(" ")}`));
   const child = spawnSync(engine.bin, [...engine.loginArgs], {
     stdio: "inherit",
