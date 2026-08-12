@@ -1,0 +1,18 @@
+{
+  "name": "@hookdump/roster",
+  "version": "0.1.0",
+  "description": "Multiple Claude and Codex seats, addressed by name. No current account, no switching — run several at once.",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "roster": "./bin/roster" },
+  "files": ["bin", "src", "README.md", "LICENSE"],
+  "keywords": ["claude-code", "codex", "cli", "profiles", "accounts", "seats", "overton", "desk"],
+  "repository": { "type": "git", "url": "git+https://github.com/hookdump/roster.git" },
+  "dependencies": { "yaml": "^2.8.0" },
+  "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.6.0" },
+  "scripts": {
+    "roster": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  }
+}
