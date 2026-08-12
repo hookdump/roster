@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadSeats, findSeat, seatEnv, seatDir, rosterHome, overtonConfigPath, type Seat } from "./seats.ts";
 import { seatStatus, lastUsed } from "./detect.ts";
+import { loadHosts, queryHosts, LOCAL, type RemoteSeat } from "./hosts.ts";
 
 const GREEN = "\x1b[32m", RED = "\x1b[31m", DIM = "\x1b[2m", BOLD = "\x1b[1m", OFF = "\x1b[0m";
 const colour = process.stdout.isTTY && !process.env.NO_COLOR;
@@ -18,7 +19,52 @@ const ENGINE = {
   codex: { bin: "codex", loginArgs: ["login"] },
 } as const;
 
-export function cmdLs(json: boolean): number {
+/** Local seats, shaped like the remote ones so both render through one path. */
+function localRows(): RemoteSeat[] {
+  return loadSeats().seats.map((seat) => ({ host: LOCAL, seat, status: seatStatus(seat) }));
+}
+
+export function cmdLs(json: boolean, opts: { hostFilter?: string; localOnly?: boolean } = {}): number {
+  const hosts = opts.localOnly ? [] : loadHosts();
+  // With no hosts configured this is exactly the single-machine command it was.
+  if (!hosts.length && !opts.hostFilter) return cmdLsLocal(json);
+
+  const wanted = opts.hostFilter;
+  const results = queryHosts(hosts.filter((h) => !wanted || h.name === wanted));
+  const rows: RemoteSeat[] = [];
+  if (!wanted || wanted === LOCAL) rows.push(...localRows());
+  for (const r of results) rows.push(...r.seats);
+
+  if (json) {
+    console.log(JSON.stringify({
+      hosts: [{ host: LOCAL, seats: localRows() }, ...results],
+    }, null, 2));
+    return 0;
+  }
+
+  const w = (f: (r: RemoteSeat) => string) => Math.max(...rows.map((r) => f(r).length), 4);
+  const who = (r: RemoteSeat) => r.status.who ?? (r.status.authenticated ? "—" : "not signed in");
+  const [wh, wn, wp, ww] = [
+    Math.max(4, ...rows.map((r) => r.host.length)),
+    w((r) => r.seat.name), w((r) => r.seat.provider), w(who),
+  ];
+  console.log(c(DIM, `  ${pad("HOST", wh)}  ${pad("SEAT", wn)}  ${pad("PROVIDER", wp)}  ${pad("AS", ww)}  STORE`));
+  for (const r of rows) {
+    const mark = r.status.authenticated ? c(GREEN, "✓") : c(RED, "✗");
+    const asWho = r.status.authenticated ? who(r) : c(RED, who(r));
+    const visible = who(r).length;
+    console.log(
+      `${mark} ${pad(r.host, wh)}  ${pad(r.seat.name, wn)}  ${pad(r.seat.provider, wp)}  ` +
+      `${asWho}${" ".repeat(Math.max(0, ww - visible))}  ${c(DIM, r.status.store)}`,
+    );
+  }
+  for (const r of results) {
+    if (r.error) console.log(`${c(RED, "!")} ${pad(r.host, wh)}  ${c(RED, "unreachable")} ${c(DIM, "· " + r.error)}`);
+  }
+  return results.some((r) => r.error) ? 1 : 0;
+}
+
+function cmdLsLocal(json: boolean): number {
   const { seats, warnings } = loadSeats();
   if (json) {
     console.log(JSON.stringify(

@@ -32,9 +32,16 @@ MOVING
 
 OPTIONS
   --json                      machine-readable output (ls, whoami)
+  --host <name>               only this machine (ls)
+  --local                     skip other machines (ls)
   --export                    env prints \`export K=V\` (env)
   --dry-run                   show what sync would do
   -h, --help  -V, --version
+
+OTHER MACHINES
+  ls reports every machine in hosts: over ssh, marked by host. Seats are
+  local by their nature — credentials live on a machine — so run, env and
+  login always act here.
 
 SEATS COME FROM
   ~/.overton/config.yaml      the accounts: block, if you run Overton
@@ -67,6 +74,9 @@ function main(argv: string[]): number {
   }
 
   const json = flags.has("--json");
+  // --host e16 narrows to one machine; --local skips the network entirely.
+  const hostIdx = mine.indexOf("--host");
+  const hostFlag = hostIdx >= 0 ? mine[hostIdx + 1] : undefined;
   const need = (what: string): string => {
     if (!args[0]) throw new Error(`${command} needs ${what}\n  try: roster ${command} <${what}>`);
     return args[0];
@@ -75,7 +85,10 @@ function main(argv: string[]): number {
   switch (command) {
     case "ls":
     case "list":
-      return cmdLs(json);
+      return cmdLs(json, {
+        hostFilter: typeof hostFlag === "string" ? hostFlag : undefined,
+        localOnly: flags.has("--local"),
+      });
     case "env":
       return cmdEnv(need("seat"), flags.has("--export"));
     case "whoami":
