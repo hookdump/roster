@@ -14,6 +14,8 @@
  *      move between machines — refresh tokens rotate, so two machines holding
  *      one token means whichever refreshes second is silently logged out.
  */
+import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { seatDir, type Seat } from "./seats.ts";
@@ -65,14 +67,35 @@ function anthropicFromFile(dir: string): SeatStatus | null {
  * a status command would be rude. We report the store and stay honest about
  * what we do not know.
  */
+/**
+ * On macOS the credential is a Keychain item, one per profile. The service name
+ * is `Claude Code-credentials-<hash>`, where the hash is the first eight hex
+ * characters of the SHA-256 of the profile's absolute path — so a named profile
+ * is detectable after all, without reading the secret and without the prompt
+ * that reading it would raise. Presence is all a status command needs.
+ */
 function anthropicFromKeychain(seat: Seat): SeatStatus {
-  const usedDefaultProfile = !seat.configDir || seat.configDir === join(process.env.HOME ?? "", ".claude");
+  const dir = seat.configDir ?? join(process.env.HOME ?? "", ".claude");
+  const hash = createHash("sha256").update(dir).digest("hex").slice(0, 8);
+  const service = `Claude Code-credentials-${hash}`;
+  // No `-w`: we ask whether the item exists, never for its contents. Reading the
+  // secret would pop a Keychain dialog, which is intolerable from `roster ls`.
+  const found = spawnSync("security", ["find-generic-password", "-s", service], {
+    stdio: ["ignore", "ignore", "ignore"],
+  }).status === 0;
+  if (found) return { authenticated: true, store: "keychain" };
+
+  // The unsuffixed item is what a default ~/.claude install writes.
+  const bare = spawnSync("security", ["find-generic-password", "-s", "Claude Code-credentials"], {
+    stdio: ["ignore", "ignore", "ignore"],
+  }).status === 0;
+  if (bare && dir === join(process.env.HOME ?? "", ".claude")) {
+    return { authenticated: true, store: "keychain" };
+  }
   return {
-    authenticated: usedDefaultProfile,
+    authenticated: false,
     store: "keychain",
-    detail: usedDefaultProfile
-      ? "macOS Keychain — run `roster whoami` for detail"
-      : "macOS keeps Claude credentials in the Keychain, so presence cannot be read from the profile directory",
+    detail: `no Keychain item for this profile — sign in with \`roster login ${seat.name}\``,
   };
 }
 
